@@ -1,3 +1,4 @@
+
 using UnityEngine;
 
 public class Level3Camera : MonoBehaviour
@@ -7,14 +8,12 @@ public class Level3Camera : MonoBehaviour
     public SpriteRenderer background;
 
     [Header("Camera Follow")]
-    [Range(0.05f, 1f)]
     public float smoothTime = 0.25f;
-
     public Vector3 offset = new Vector3(0f, 0f, -10f);
 
     [Header("Dead Zone")]
-    public float deadZoneX = 2f;
-    public float deadZoneY = 1.5f;
+    public float deadZoneX = 1.5f;
+    public float deadZoneY = 1f;
 
     [Header("Zoom")]
     public float normalSize = 4.6f;
@@ -29,30 +28,31 @@ public class Level3Camera : MonoBehaviour
     {
         cam = GetComponent<Camera>();
 
-        if (cam == null)
+        if (cam == null || player == null)
         {
-            enabled = false;
-            return;
-        }
-
-        if (player == null)
-        {
+            Debug.LogWarning(
+                "Level3Camera: Assign the Camera and Player.");
             enabled = false;
             return;
         }
 
         if (background == null)
         {
+            Debug.LogWarning(
+                "Level3Camera: Assign the Background.");
             enabled = false;
             return;
         }
 
         cam.orthographicSize = normalSize;
 
-        Vector3 startPosition = transform.position;
+        Vector3 startPosition = player.position + offset;
         startPosition.z = offset.z;
 
-        transform.position = ClampPositionToBackground(startPosition);
+        transform.position =
+            ClampPositionToBackground(startPosition);
+
+        cameraVelocity = Vector3.zero;
     }
 
     private void LateUpdate()
@@ -61,7 +61,6 @@ public class Level3Camera : MonoBehaviour
             return;
 
         HandleZoom();
-
         FollowPlayer();
     }
 
@@ -69,62 +68,47 @@ public class Level3Camera : MonoBehaviour
     {
         Vector3 currentPosition = transform.position;
 
+        // Keep the camera still until the player leaves
+        // the follow zone around the camera center.
         float targetX = currentPosition.x;
         float targetY = currentPosition.y;
 
-        float horizontalDistance =
+        float distanceX =
             player.position.x - currentPosition.x;
 
-        float verticalDistance =
+        float distanceY =
             player.position.y - currentPosition.y;
 
-        if (horizontalDistance > deadZoneX)
-        {
-            targetX =
-                player.position.x - deadZoneX;
-        }
-        else if (horizontalDistance < -deadZoneX)
-        {
-            targetX =
-                player.position.x + deadZoneX;
-        }
+        if (distanceX > deadZoneX)
+            targetX = player.position.x - deadZoneX;
+        else if (distanceX < -deadZoneX)
+            targetX = player.position.x + deadZoneX;
 
-        if (verticalDistance > deadZoneY)
-        {
-            targetY =
-                player.position.y - deadZoneY;
-        }
-        else if (verticalDistance < -deadZoneY)
-        {
-            targetY =
-                player.position.y + deadZoneY;
-        }
-
-        targetX += offset.x;
-        targetY += offset.y;
+        if (distanceY > deadZoneY)
+            targetY = player.position.y - deadZoneY;
+        else if (distanceY < -deadZoneY)
+            targetY = player.position.y + deadZoneY;
 
         Vector3 targetPosition = new Vector3(
-            targetX,
-            targetY,
+            targetX + offset.x,
+            targetY + offset.y,
             offset.z
         );
 
         targetPosition =
             ClampPositionToBackground(targetPosition);
 
-        Vector3 newPosition =
-            Vector3.SmoothDamp(
-                transform.position,
-                targetPosition,
-                ref cameraVelocity,
-                smoothTime
-            );
+        Vector3 newPosition = Vector3.SmoothDamp(
+            currentPosition,
+            targetPosition,
+            ref cameraVelocity,
+            smoothTime
+        );
 
         newPosition =
             ClampPositionToBackground(newPosition);
 
         newPosition.z = offset.z;
-
         transform.position = newPosition;
     }
 
@@ -133,53 +117,24 @@ public class Level3Camera : MonoBehaviour
     {
         Bounds bounds = background.bounds;
 
-        float cameraHalfHeight =
-            cam.orthographicSize;
+        float halfHeight = cam.orthographicSize;
+        float halfWidth = halfHeight * cam.aspect;
 
-        float cameraHalfWidth =
-            cameraHalfHeight * cam.aspect;
+        float minX = bounds.min.x + halfWidth;
+        float maxX = bounds.max.x - halfWidth;
 
-        float minX =
-            bounds.min.x + cameraHalfWidth;
-
-        float maxX =
-            bounds.max.x - cameraHalfWidth;
-
-        float minY =
-            bounds.min.y + cameraHalfHeight;
-
-        float maxY =
-            bounds.max.y - cameraHalfHeight;
+        float minY = bounds.min.y + halfHeight;
+        float maxY = bounds.max.y - halfHeight;
 
         if (minX > maxX)
-        {
-            position.x =
-                bounds.center.x;
-        }
+            position.x = bounds.center.x;
         else
-        {
-            position.x =
-                Mathf.Clamp(
-                    position.x,
-                    minX,
-                    maxX
-                );
-        }
+            position.x = Mathf.Clamp(position.x, minX, maxX);
 
         if (minY > maxY)
-        {
-            position.y =
-                bounds.center.y;
-        }
+            position.y = bounds.center.y;
         else
-        {
-            position.y =
-                Mathf.Clamp(
-                    position.y,
-                    minY,
-                    maxY
-                );
-        }
+            position.y = Mathf.Clamp(position.y, minY, maxY);
 
         position.z = offset.z;
 
@@ -188,17 +143,13 @@ public class Level3Camera : MonoBehaviour
 
     private void HandleZoom()
     {
-        float targetSize =
-            zooming
-                ? zoomSize
-                : normalSize;
+        float targetSize = zooming ? zoomSize : normalSize;
 
-        cam.orthographicSize =
-            Mathf.Lerp(
-                cam.orthographicSize,
-                targetSize,
-                zoomSpeed * Time.deltaTime
-            );
+        cam.orthographicSize = Mathf.Lerp(
+            cam.orthographicSize,
+            targetSize,
+            zoomSpeed * Time.deltaTime
+        );
     }
 
     public void ZoomIn()
@@ -213,27 +164,14 @@ public class Level3Camera : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        if (background == null)
-            return;
+        if (background != null)
+        {
+            Bounds bounds = background.bounds;
 
-        Bounds bounds = background.bounds;
-
-        Gizmos.DrawWireCube(
-            bounds.center,
-            bounds.size
-        );
-
-        Gizmos.DrawWireCube(
-            new Vector3(
-                transform.position.x,
-                transform.position.y,
-                0f
-            ),
-            new Vector3(
-                deadZoneX * 2f,
-                deadZoneY * 2f,
-                0f
-            )
-        );
+            Gizmos.DrawWireCube(
+                bounds.center,
+                bounds.size
+            );
+        }
     }
 }

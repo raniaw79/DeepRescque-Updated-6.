@@ -1,54 +1,59 @@
+
 using UnityEngine;
+using System.Collections;
 
 public class OxygenTankSpawner : MonoBehaviour
 {
     public GameObject[] oxygenTanks;
 
-    public float firstTankDelay = 10f;
-    public float timeBetweenTanks = 20f;
+    public float timeBetweenTanks = 10f;
+    public float timeBeforeDisappear = 10f;
 
     private void Start()
     {
+        foreach (GameObject tank in oxygenTanks)
+        {
+            if (tank != null)
+            {
+                tank.SetActive(false);
+            }
+        }
+
+        StartCoroutine(SpawnTanks());
+    }
+
+    private IEnumerator SpawnTanks()
+    {
         for (int i = 0; i < oxygenTanks.Length; i++)
         {
-            oxygenTanks[i].SetActive(false);
-        }
+            GameObject tank = oxygenTanks[i];
 
-        Invoke(nameof(ShowFirstTank), firstTankDelay);
-    }
+            if (tank != null)
+            {
+                tank.SetActive(true);
 
-    private void ShowFirstTank()
-    {
-        if (oxygenTanks.Length > 0)
-        {
-            oxygenTanks[0].SetActive(true);
-            Invoke(nameof(ShowSecondTank), timeBetweenTanks);
-        }
-    }
+                // مؤقت اختفاء مستقل لهذه الأسطوانة
+                StartCoroutine(HideTankAfterDelay(
+                    tank, timeBeforeDisappear
+                ));
+            }
 
-    private void ShowSecondTank()
-    {
-        if (oxygenTanks.Length > 1)
-        {
-            oxygenTanks[1].SetActive(true);
-            Invoke(nameof(ShowThirdTank), timeBetweenTanks);
+            // موعد ظهور الأسطوانة التالية مستقل
+            if (i < oxygenTanks.Length - 1)
+            {
+                yield return new WaitForSeconds(timeBetweenTanks);
+            }
         }
     }
 
-    private void ShowThirdTank()
+    private IEnumerator HideTankAfterDelay(
+        GameObject tank, float delay)
     {
-        if (oxygenTanks.Length > 2)
-        {
-            oxygenTanks[2].SetActive(true);
-            Invoke(nameof(ShowFourthTank), timeBetweenTanks);
-        }
-    }
+        yield return new WaitForSeconds(delay);
 
-    private void ShowFourthTank()
-    {
-        if (oxygenTanks.Length > 3)
+        if (tank != null && tank.activeSelf)
         {
-            oxygenTanks[3].SetActive(true);
+            tank.SetActive(false);
         }
     }
 }

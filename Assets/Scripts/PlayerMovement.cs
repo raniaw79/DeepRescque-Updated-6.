@@ -10,8 +10,11 @@ public class PlayerMovement : MonoBehaviour
     public Transform background;
     public float boundsPadding = 0.5f;
 
+    [Header("Camera Bounds")]
+    public Camera mainCamera;
+    public bool stayInsideCamera = true;
+
     [Header("Hit Effect")]
-    public float knockbackForce = 3f;
     public float knockbackDuration = 0.25f;
     public float shakeAmount = 0.08f;
 
@@ -30,10 +33,15 @@ public class PlayerMovement : MonoBehaviour
     private float minY;
     private float maxY;
 
+    private Vector3 originalLocalPosition;
+
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         spriteRenderer = GetComponent<SpriteRenderer>();
+
+        if (mainCamera == null)
+            mainCamera = Camera.main;
 
         CalculateBackgroundBounds();
     }
@@ -42,27 +50,36 @@ public class PlayerMovement : MonoBehaviour
     {
         if (background == null)
         {
-            Debug.LogWarning("Please assign the Background in PlayerMovement.");
+            Debug.LogWarning(
+                "Please assign the Background in PlayerMovement.");
             return;
         }
 
-        SpriteRenderer backgroundRenderer =
+        SpriteRenderer bgRenderer =
             background.GetComponent<SpriteRenderer>();
 
-        if (backgroundRenderer != null)
-        {
-            Bounds bounds = backgroundRenderer.bounds;
-
-            minX = bounds.min.x + boundsPadding;
-            maxX = bounds.max.x - boundsPadding;
-            minY = bounds.min.y + boundsPadding;
-            maxY = bounds.max.y - boundsPadding;
-        }
-        else
+        if (bgRenderer == null)
         {
             Debug.LogWarning(
-                "Background needs a SpriteRenderer component.");
+                "Background needs a SpriteRenderer.");
+            return;
         }
+
+        Bounds bgBounds = bgRenderer.bounds;
+
+        float playerHalfWidth = 0f;
+        float playerHalfHeight = 0f;
+
+        if (spriteRenderer != null)
+        {
+            playerHalfWidth = spriteRenderer.bounds.extents.x;
+            playerHalfHeight = spriteRenderer.bounds.extents.y;
+        }
+
+        minX = bgBounds.min.x + playerHalfWidth + boundsPadding;
+        maxX = bgBounds.max.x - playerHalfWidth - boundsPadding;
+        minY = bgBounds.min.y + playerHalfHeight + boundsPadding;
+        maxY = bgBounds.max.y - playerHalfHeight - boundsPadding;
     }
 
     void Update()
@@ -72,7 +89,7 @@ public class PlayerMovement : MonoBehaviour
 
         movement = Vector2.zero;
 
-        // Touch على الموبايل
+        // Touch controls
         if (Input.touchCount > 0)
         {
             Touch touch = Input.GetTouch(0);
@@ -102,7 +119,7 @@ public class PlayerMovement : MonoBehaviour
             }
         }
 
-        // Mouse للاختبار داخل Simulator
+        // Mouse controls for Simulator testing
         if (Input.GetMouseButtonDown(0))
         {
             touchStart = Input.mousePosition;
@@ -124,7 +141,7 @@ public class PlayerMovement : MonoBehaviour
             movement = Vector2.zero;
         }
 
-        // اتجاه صورة الغواص
+        // Flip diver sprite
         if (spriteRenderer != null)
         {
             if (movement.x > 0.05f)
@@ -140,18 +157,60 @@ public class PlayerMovement : MonoBehaviour
             return;
 
         Vector2 nextPosition =
-            rb.position + movement * speed * Time.fixedDeltaTime;
+            rb.position +
+            movement * speed * Time.fixedDeltaTime;
 
-        if (background != null)
-        {
-            nextPosition.x = Mathf.Clamp(
-                nextPosition.x, minX, maxX);
-
-            nextPosition.y = Mathf.Clamp(
-                nextPosition.y, minY, maxY);
-        }
+        nextPosition = ClampPosition(nextPosition);
 
         rb.MovePosition(nextPosition);
+    }
+
+    Vector2 ClampPosition(Vector2 position)
+    {
+        // Keep diver inside background
+        if (background != null)
+        {
+            position.x = Mathf.Clamp(position.x, minX, maxX);
+            position.y = Mathf.Clamp(position.y, minY, maxY);
+        }
+
+        // Keep diver inside camera view
+        if (stayInsideCamera && mainCamera != null &&
+            mainCamera.orthographic)
+        {
+            float halfHeight = mainCamera.orthographicSize;
+            float halfWidth = halfHeight * mainCamera.aspect;
+
+            float playerHalfWidth = 0f;
+            float playerHalfHeight = 0f;
+
+            if (spriteRenderer != null)
+            {
+                playerHalfWidth = spriteRenderer.bounds.extents.x;
+                playerHalfHeight = spriteRenderer.bounds.extents.y;
+            }
+
+            float camMinX =
+                mainCamera.transform.position.x -
+                halfWidth + playerHalfWidth;
+
+            float camMaxX =
+                mainCamera.transform.position.x +
+                halfWidth - playerHalfWidth;
+
+            float camMinY =
+                mainCamera.transform.position.y -
+                halfHeight + playerHalfHeight;
+
+            float camMaxY =
+                mainCamera.transform.position.y +
+                halfHeight - playerHalfHeight;
+
+            position.x = Mathf.Clamp(position.x, camMinX, camMaxX);
+            position.y = Mathf.Clamp(position.y, camMinY, camMaxY);
+        }
+
+        return position;
     }
 
     public void TakeHit(Vector2 hazardPosition)
@@ -163,43 +222,37 @@ public class PlayerMovement : MonoBehaviour
             StopCoroutine(knockbackCoroutine);
 
         knockbackCoroutine =
-            StartCoroutine(KnockbackEffect(hazardPosition));
+            StartCoroutine(KnockbackEffect());
     }
 
-    IEnumerator KnockbackEffect(Vector2 hazardPosition)
+    IEnumerator KnockbackEffect()
     {
         isKnockedBack = true;
 
-        Vector2 direction =
-            (Vector2)transform.position - hazardPosition;
-
-        if (direction.sqrMagnitude < 0.01f)
-            direction = Vector2.up;
-
-        direction.Normalize();
-
-        rb.linearVelocity = direction * knockbackForce;
-
+        // Save the diver's exact position
         Vector3 originalPosition = transform.localPosition;
+
         float elapsed = 0f;
 
         while (elapsed < knockbackDuration)
         {
-            float shakeX =
-                Random.Range(-shakeAmount, shakeAmount);
+            float shakeX = Random.Range(-shakeAmount, shakeAmount);
+            float shakeY = Random.Range(-shakeAmount, shakeAmount);
 
-            float shakeY =
-                Random.Range(-shakeAmount, shakeAmount);
-
-            transform.localPosition =
-                originalPosition + new Vector3(shakeX, shakeY, 0f);
+            // Shake only; no knockback force
+            transform.localPosition = originalPosition +
+                new Vector3(shakeX, shakeY, 0f);
 
             elapsed += Time.deltaTime;
             yield return null;
         }
 
+        // Return to the exact original position
         transform.localPosition = originalPosition;
-        rb.linearVelocity = Vector2.zero;
+
+        if (rb != null)
+            rb.linearVelocity = Vector2.zero;
+
         movement = Vector2.zero;
         isKnockedBack = false;
         knockbackCoroutine = null;
